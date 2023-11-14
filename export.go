@@ -9,25 +9,56 @@ import (
 
 	"github.com/DataDog/datadog-api-client-go/v2/api/datadog"
 	"github.com/DataDog/datadog-api-client-go/v2/api/datadogV2"
+	"github.com/sethvargo/go-envconfig"
 )
 
 type DDExport struct {
-	counter int
-	query   string
-	to      string
-	from    string
-	limit   int
-	output  io.Writer
+	counter    int
+	query      string
+	to         string
+	from       string
+	limit      int
+	output     io.Writer
+	ApiKeyAuth string `env:"DD_API_KEY,required"`
+	AppKeyAuth string `env:"DD_APP_KEY,required"`
+	apiClient  *datadog.APIClient
+	ctx        context.Context
 }
 
-func New(query string, to string, from string, limit int, output io.Writer) *DDExport {
+func New(query, to, from string, limit int, output io.Writer) (*DDExport, error) {
 	d := DDExport{}
 	d.query = query
 	d.to = to
 	d.from = from
 	d.limit = limit
 	d.output = output
-	return &d
+
+	err := envconfig.Process(context.Background(), &d)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.WithValue(
+		context.Background(),
+		datadog.ContextAPIKeys,
+		map[string]datadog.APIKey{
+			"apiKeyAuth": {
+				Key: d.ApiKeyAuth,
+			},
+			"appKeyAuth": {
+				Key: d.AppKeyAuth,
+			},
+		},
+	)
+
+	configuration := datadog.NewConfiguration()
+	configuration.RetryConfiguration.EnableRetry = true
+	configuration.RetryConfiguration.MaxRetries = 10
+	apiClient := datadog.NewAPIClient(configuration)
+	d.apiClient = apiClient
+	d.ctx = ctx
+
+	return &d, nil
 }
 
 func writeRecords[K any](d *DDExport, resp <-chan datadog.PaginationResult[K]) {
@@ -40,28 +71,6 @@ func writeRecords[K any](d *DDExport, resp <-chan datadog.PaginationResult[K]) {
 		d.writeRecord(json)
 	}
 	d.progress()
-}
-
-func (d *DDExport) client() (*datadog.APIClient, context.Context) {
-	ctx := context.WithValue(
-		context.Background(),
-		datadog.ContextAPIKeys,
-		map[string]datadog.APIKey{
-			"apiKeyAuth": {
-				Key: os.Getenv("DD_API_KEY"),
-			},
-			"appKeyAuth": {
-				Key: os.Getenv("DD_APP_KEY"),
-			},
-		},
-	)
-
-	configuration := datadog.NewConfiguration()
-	configuration.RetryConfiguration.EnableRetry = true
-	configuration.RetryConfiguration.MaxRetries = 10
-
-	apiClient := datadog.NewAPIClient(configuration)
-	return apiClient, ctx
 }
 
 func (d *DDExport) writeRecord(record []byte) {
@@ -82,8 +91,7 @@ func (d *DDExport) progress() {
 }
 
 func (d *DDExport) SearchLogs() {
-	client, ctx := d.client()
-	api := datadogV2.NewLogsApi(client)
+	api := datadogV2.NewLogsApi(d.apiClient)
 
 	body := datadogV2.LogsListRequest{
 		Filter: &datadogV2.LogsQueryFilter{
@@ -99,13 +107,12 @@ func (d *DDExport) SearchLogs() {
 		},
 	}
 
-	resp, _ := api.ListLogsWithPagination(ctx, *datadogV2.NewListLogsOptionalParameters().WithBody(body))
+	resp, _ := api.ListLogsWithPagination(d.ctx, *datadogV2.NewListLogsOptionalParameters().WithBody(body))
 	writeRecords(d, resp)
 }
 
 func (d *DDExport) SearchSpans() {
-	client, ctx := d.client()
-	api := datadogV2.NewSpansApi(client)
+	api := datadogV2.NewSpansApi(d.apiClient)
 
 	body := datadogV2.SpansListRequest{
 		Data: &datadogV2.SpansListRequestData{
@@ -126,6 +133,6 @@ func (d *DDExport) SearchSpans() {
 		},
 	}
 
-	resp, _ := api.ListSpansWithPagination(ctx, body)
+	resp, _ := api.ListSpansWithPagination(d.ctx, body)
 	writeRecords(d, resp)
 }

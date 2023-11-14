@@ -1,5 +1,5 @@
 build:
-	go build -o bin/ddexport cmd/ddexport/main.go
+	go build -o bin/ddexport cmd/main.go
 
 fmt:
 	go fmt ./...

@@ -2,7 +2,10 @@ module github.com/arkadiyt/ddexport
 
 go 1.20
 
-require github.com/DataDog/datadog-api-client-go/v2 v2.18.0
+require (
+	github.com/DataDog/datadog-api-client-go/v2 v2.18.0
+	github.com/sethvargo/go-envconfig v0.9.0
+)
 
 require (
 	github.com/DataDog/zstd v1.5.5 // indirect

@@ -5,7 +5,7 @@ Datadog's UI only lets you export 5000 rows of logs or spans - `ddexport` is a u
 ## Usage
 
 ```
-go install github.com/arkadiyt/ddexport/cmd@latest
+go install github.com/arkadiyt/ddexport/cmd/ddexport@latest
 
 # Set your API and APP keys
 export DD_API_KEY=...
